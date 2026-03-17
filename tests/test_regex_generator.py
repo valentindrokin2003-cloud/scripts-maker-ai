@@ -1,0 +1,47 @@
+import re
+import pytest
+from unittest.mock import MagicMock
+from src.regex_generator import generate_regex
+
+
+def _make_mock_client(response_text: str):
+    mock_client = MagicMock()
+    mock_msg = MagicMock()
+    mock_msg.content = [MagicMock(text=response_text)]
+    mock_client.messages.create.return_value = mock_msg
+    return mock_client
+
+
+def test_generate_regex_returns_list():
+    client = _make_mock_client('["\\\\bфасадн\\\\w{0,3}\\\\b"]')
+    result = generate_regex(["Фасадные кассеты"], client)
+    assert isinstance(result, list)
+
+
+def test_generate_regex_all_valid_patterns():
+    client = _make_mock_client('["\\\\bфасадн\\\\w{0,3}\\\\b", "\\\\bкассет\\\\w{0,3}\\\\b"]')
+    result = generate_regex(["Фасадные кассеты"], client)
+    for pattern in result:
+        re.compile(pattern)  # should not raise
+
+
+def test_generate_regex_invalid_pattern_is_dropped(capsys):
+    client = _make_mock_client('["\\\\bвалидн\\\\w\\\\b", "[невалидная регулярка"]')
+    result = generate_regex(["тест"], client)
+    out = capsys.readouterr().out
+    assert "Warning" in out
+    assert len(result) == 1
+
+
+def test_empty_product_words_returns_empty():
+    client = _make_mock_client("[]")
+    result = generate_regex([], client)
+    assert result == []
+
+
+def test_invalid_json_returns_empty(capsys):
+    client = _make_mock_client("не JSON")
+    result = generate_regex(["слово"], client)
+    out = capsys.readouterr().out
+    assert "Warning" in out
+    assert result == []
