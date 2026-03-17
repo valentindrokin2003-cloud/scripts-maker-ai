@@ -10,7 +10,11 @@ import argparse
 import os
 import sys
 
+from dotenv import load_dotenv
 import anthropic
+
+# Load environment variables from .env file
+load_dotenv()
 
 from src.brief_extractor import extract_brief, BriefExtractionError
 from src.date_resolver import resolve_dates
