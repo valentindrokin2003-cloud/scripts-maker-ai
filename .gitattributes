@@ -1,0 +1,6 @@
+# Security: prevent accidentally committing sensitive information
+.env filter=remove-secrets diff=remove-secrets merge=remove-secrets
+*.ipynb filter=remove-ipynb-secrets
+
+# Mark notebooks as binary to avoid merge conflicts
+*.ipynb merge=union
