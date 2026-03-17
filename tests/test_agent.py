@@ -91,5 +91,5 @@ def test_list_words_populated():
     bd = _brief()
     r = build_replacements(bd, "2025-09-17", "2026-03-17", [], patterns)
     output = r["##AGENT:list_words##"]
-    # Check that the pattern appears in the list (repr'd with quoted backslashes)
-    assert repr(patterns[0]) in output
+    # Check that the pattern appears in the list as raw string: r"..."
+    assert r'r"\bфасадн\w{0,3}\b"' in output

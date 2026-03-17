@@ -62,7 +62,7 @@ def build_replacements(brief, start_date: str, end_date: str,
     )
 
     # 6. list_words
-    patterns_repr = "[\n" + "".join(f"    {p!r},\n" for p in list_words) + "]"
+    patterns_repr = "[\n" + "".join(f'    r"{p}",\n' for p in list_words) + "]"
     r["##AGENT:list_words##"] = f"# ##AGENT:list_words##\nlist_words = {patterns_repr}"
 
     # 7. regions
