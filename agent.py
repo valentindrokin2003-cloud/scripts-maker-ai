@@ -9,9 +9,25 @@ Usage:
 import argparse
 import os
 import sys
+import logging
+from datetime import datetime
 
 from dotenv import load_dotenv
 from openai import OpenAI
+import httpx
+
+# Configure logging
+log_filename = f"agent_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_filename),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
+logger.info(f"=== Agent started, logs will be saved to {log_filename} ===")
 
 # Load environment variables from .env file
 load_dotenv()
@@ -140,7 +156,10 @@ def main():
     parser.add_argument("--output", default="output", help="Output directory (default: output/)")
     args = parser.parse_args()
 
+    logger.info(f"Arguments: brief={args.brief}, output={args.output}")
+
     if not os.path.exists(args.brief):
+        logger.error(f"Brief file not found: {args.brief}")
         print(f"Error: brief file not found: {args.brief}")
         sys.exit(1)
 
@@ -149,44 +168,99 @@ def main():
     # Initialize DeepSeek client
     api_key = os.getenv("DEEPSEEK_API_KEY")
     if not api_key:
+        logger.error("DEEPSEEK_API_KEY not set in .env file")
         print("Error: DEEPSEEK_API_KEY not set in .env file")
         sys.exit(1)
 
+    logger.info("DEEPSEEK_API_KEY found in environment")
+    logger.info(f"API Key length: {len(api_key)} chars")
+
+    # Test API connectivity before starting main work
+    logger.info("=" * 60)
+    logger.info("Testing API connectivity...")
+    logger.info("=" * 60)
+
+    # Create httpx client without proxy settings from environment
+    http_client = httpx.Client(trust_env=False)
+
     client = OpenAI(
         api_key=api_key,
-        base_url="https://api.deepseek.com"
+        base_url="https://api.deepseek.com",
+        http_client=http_client
     )
+    logger.info("✓ OpenAI client initialized for DeepSeek API")
+    logger.info(f"  Base URL: https://api.deepseek.com")
+    logger.info(f"  Model: deepseek-chat")
+
+    # Try a quick test call
+    try:
+        logger.info("Attempting quick API test call (testing connection)...")
+        test_response = client.chat.completions.create(
+            model="deepseek-chat",
+            max_tokens=100,
+            timeout=30,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Say OK"},
+            ],
+        )
+        logger.info("✓ API test call successful - API is reachable")
+        logger.info(f"  Response: {test_response.choices[0].message.content[:50]}")
+    except Exception as e:
+        logger.error(f"✗ API test call failed: {type(e).__name__}: {e}")
+        logger.error(f"  The API might be unreachable. Check:")
+        logger.error(f"  1. Internet connection")
+        logger.error(f"  2. API endpoint (https://api.deepseek.com)")
+        logger.error(f"  3. Firewall/proxy settings")
+        logger.error(f"  4. API key validity")
+        logger.warning("Continuing anyway, but main API calls may also fail...")
+
+    logger.info("=" * 60)
 
     print(f"[1/6] Reading Excel brief: {args.brief}")
+    logger.info(f"[1/6] Reading Excel brief: {args.brief}")
     excel_text = parse_excel_to_text(args.brief)
+    logger.info(f"[1/6] Excel text extracted: {len(excel_text)} chars")
 
-    print("[2/6] Extracting fields (Claude call 1)...")
+    print("[2/6] Extracting fields (DeepSeek API call 1)...")
+    logger.info("[2/6] Starting brief extraction (API call 1)")
     try:
         brief = extract_brief(excel_text, client)
     except BriefExtractionError as e:
+        logger.error(f"[2/6] Brief extraction failed: {e}")
         print(f"Error: {e}")
         sys.exit(1)
+    logger.info(f"[2/6] Brief extraction succeeded")
     print(f"      → name: {brief.name}")
 
     print("[3/6] Resolving dates...")
+    logger.info(f"[3/6] Resolving dates from period: {brief.analysis_period}")
     start_date, end_date = resolve_dates(brief.analysis_period)
+    logger.info(f"[3/6] Dates resolved: {start_date} — {end_date}")
     print(f"      → {start_date} — {end_date}")
 
     print("[4/6] Matching words from dictionary...")
+    logger.info(f"[4/6] Matching {len(brief.product_words)} product words from dictionary")
     lst_sbersov = match_words(brief.product_words, DICT_PATH)
+    logger.info(f"[4/6] Word matching complete: {len(lst_sbersov)} matches")
     print(f"      → {len(lst_sbersov)} words matched: {lst_sbersov}")
 
-    print("[5/6] Generating regex patterns (Claude call 2)...")
+    print("[5/6] Generating regex patterns (DeepSeek API call 2)...")
+    logger.info("[5/6] Starting regex generation (API call 2)")
     list_words = generate_regex(brief.product_words, client)
+    logger.info(f"[5/6] Regex generation complete: {len(list_words)} patterns")
     print(f"      → {len(list_words)} patterns generated")
 
     print("[6/6] Filling notebook template...")
+    logger.info(f"[6/6] Loading template from {TEMPLATE_PATH}")
     nb = load_template(TEMPLATE_PATH)
+    logger.info(f"[6/6] Building replacements and filling notebook")
     replacements = build_replacements(brief, start_date, end_date, lst_sbersov, list_words)
     fill_notebook(nb, replacements)
 
     output_path = os.path.join(args.output, f"{brief.name_safe}_script.ipynb")
     save_notebook(nb, output_path)
+    logger.info(f"[6/6] Notebook saved to {output_path}")
     print(f"\nDone! Output: {output_path}")
 
 
