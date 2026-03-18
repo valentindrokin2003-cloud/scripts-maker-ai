@@ -120,7 +120,10 @@ def extract_brief(excel_text: str, client: Any) -> BriefData:
     logger.info(f"[extract_brief] Raw regions from API: {regions}")
     if regions:
         # Check for "all Russia" indicators (case-insensitive)
-        all_russia_indicators = {"рф", "россия", "all", "все", "russia", "russian federation"}
+        all_russia_indicators = {
+            "рф", "россия", "российская федерация",
+            "all", "все", "russia", "russian federation"
+        }
         regions_lower = [r.lower().strip() for r in regions]
         if any(indicator in regions_lower for indicator in all_russia_indicators):
             logger.info(f"[extract_brief] ⚠️ Detected 'all regions' indicator: {regions}")
