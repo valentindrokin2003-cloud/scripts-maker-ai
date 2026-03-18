@@ -20,10 +20,13 @@ VALID_JSON = '''{
 
 
 def _make_mock_client(response_text: str):
+    """Create mock OpenAI client for DeepSeek API"""
     mock_client = MagicMock()
+    mock_choice = MagicMock()
+    mock_choice.message.content = response_text
     mock_msg = MagicMock()
-    mock_msg.content = [MagicMock(text=response_text)]
-    mock_client.messages.create.return_value = mock_msg
+    mock_msg.choices = [mock_choice]
+    mock_client.chat.completions.create.return_value = mock_msg
     return mock_client
 
 

@@ -11,7 +11,7 @@ import os
 import sys
 
 from dotenv import load_dotenv
-import anthropic
+from openai import OpenAI
 
 # Load environment variables from .env file
 load_dotenv()
@@ -145,7 +145,17 @@ def main():
         sys.exit(1)
 
     os.makedirs(args.output, exist_ok=True)
-    client = anthropic.Anthropic()
+
+    # Initialize DeepSeek client
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    if not api_key:
+        print("Error: DEEPSEEK_API_KEY not set in .env file")
+        sys.exit(1)
+
+    client = OpenAI(
+        api_key=api_key,
+        base_url="https://api.deepseek.com"
+    )
 
     print(f"[1/6] Reading Excel brief: {args.brief}")
     excel_text = parse_excel_to_text(args.brief)

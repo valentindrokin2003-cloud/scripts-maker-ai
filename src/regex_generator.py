@@ -24,21 +24,21 @@ SYSTEM_PROMPT = """Ты генерируешь Python regex паттерны д�
 
 def generate_regex(product_words: List[str], client: Any) -> List[str]:
     """
-    Call Claude to generate regex patterns from product words.
+    Call DeepSeek to generate regex patterns from product words.
     Each invalid pattern is dropped with a warning.
-    Returns empty list if product_words is empty or Claude fails.
+    Returns empty list if product_words is empty or DeepSeek fails.
     """
     if not product_words:
         return []
 
-    message = client.messages.create(
-        model="claude-sonnet-4-6",
+    message = client.chat.completions.create(
+        model="deepseek-chat",
         max_tokens=2048,
-        system=SYSTEM_PROMPT,
+        system_prompt=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": json.dumps(product_words, ensure_ascii=False)}],
     )
 
-    raw = message.content[0].text.strip()
+    raw = message.choices[0].message.content.strip()
 
     if raw.startswith("```"):
         raw = raw.split("```")[1]

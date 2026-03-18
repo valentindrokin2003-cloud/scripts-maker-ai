@@ -37,17 +37,17 @@ class BriefExtractionError(Exception):
 
 def extract_brief(excel_text: str, client: Any) -> BriefData:
     """
-    Call Claude to extract BriefData fields from Excel text.
+    Call DeepSeek to extract BriefData fields from Excel text.
     Raises BriefExtractionError if required fields are missing or response is invalid.
     """
-    message = client.messages.create(
-        model="claude-sonnet-4-6",
+    message = client.chat.completions.create(
+        model="deepseek-chat",
         max_tokens=2048,
-        system=SYSTEM_PROMPT,
+        system_prompt=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": excel_text}],
     )
 
-    raw = message.content[0].text.strip()
+    raw = message.choices[0].message.content.strip()
 
     # Strip markdown code fences if present
     if raw.startswith("```"):
