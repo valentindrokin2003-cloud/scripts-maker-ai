@@ -21,6 +21,16 @@ def test_generate_regex_returns_list():
     assert isinstance(result, list)
 
 
+def test_generate_regex_sends_system_prompt_as_system_message():
+    client = _make_mock_client('["\\\\bфасадн\\\\w{0,3}\\\\b"]')
+
+    generate_regex(["Фасадные кассеты"], client)
+
+    _, kwargs = client.chat.completions.create.call_args
+    assert "system_prompt" not in kwargs
+    assert kwargs["messages"][0]["role"] == "system"
+
+
 def test_generate_regex_all_valid_patterns():
     client = _make_mock_client('["\\\\bфасадн\\\\w{0,3}\\\\b", "\\\\bкассет\\\\w{0,3}\\\\b"]')
     result = generate_regex(["Фасадные кассеты"], client)

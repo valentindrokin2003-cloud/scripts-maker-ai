@@ -39,6 +39,17 @@ def test_extract_brief_returns_briefdata():
     assert result.revenue_max is None
 
 
+def test_extract_brief_sends_system_prompt_as_system_message():
+    client = _make_mock_client(VALID_JSON)
+
+    extract_brief("some excel text", client)
+
+    _, kwargs = client.chat.completions.create.call_args
+    assert "system_prompt" not in kwargs
+    assert kwargs["messages"][0]["role"] == "system"
+    assert kwargs["messages"][1] == {"role": "user", "content": "some excel text"}
+
+
 def test_extract_brief_missing_name_raises():
     bad_json = '{"inn_client": ["123"], "analysis_period": "last_N_months:6"}'
     client = _make_mock_client(bad_json)

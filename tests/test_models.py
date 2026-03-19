@@ -1,3 +1,4 @@
+
 from src.models import BriefData
 
 def test_briefdata_required_fields():
