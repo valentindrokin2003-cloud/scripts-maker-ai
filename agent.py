@@ -85,8 +85,11 @@ def build_replacements(brief, start_date: str, end_date: str,
     patterns_repr = "[\n" + "".join(f'    r"{p}",\n' for p in list_words) + "]"
     r["##AGENT:list_words##"] = f"# ##AGENT:list_words##\nlist_words = {patterns_repr}"
 
-    # 7. regions
+    # 7. regions - OLD placeholder (kept for backwards compatibility)
     r["##AGENT:regions##"] = f"# ##AGENT:regions##\nregions = {brief.regions!r}"
+
+    # 7b. regions_filter - NEW placeholder for region distribution cell
+    r["##AGENT:regions_filter##"] = f"# ##AGENT:regions_filter##\n# Распределение по регионам\nintegrum = spark.read.table(ml360_folder.format('u_sparkinterfax_integrum'))\\\n                    .select('inn', 'okato_cd')\\\n                    .withColumn('okato', F.col('okato_cd')[0:2])\n        \n# okato = spark.read.parquet('okato').withColumnRenamed('okato_cd', 'okato')  \n\ninn_wth_regions = integrum.join(F.broadcast(spark.table(\"arnsdpsbx_t_team_monetization_products.ens_dict_cc_region_okato\")), on = 'okato', how = 'inner')\n\n\nregions = {brief.regions!r}\n\nif len(regions) > 0:\n    inn_wth_regions = inn_wth_regions.filter(F.col('region').isin(regions))"
 
     # 8. okved_list
     if brief.okved_list:
