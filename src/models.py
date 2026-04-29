@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Any, List, Optional
 import re
 from unidecode import unidecode
 
@@ -14,7 +14,9 @@ class BriefData:
     # Optional with defaults
     product_words: List[str] = field(default_factory=list)
     regions: List[str] = field(default_factory=list)
+    f_ocrygs: List[str] = field(default_factory=list)
     okved_list: List[str] = field(default_factory=list)
+    okved_explanations: dict[str, list[str]] = field(default_factory=dict)
     exclusions: List[str] = field(default_factory=list)
     revenue_min: int = 100_000_000
     revenue_max: Optional[int] = None
@@ -42,3 +44,18 @@ class BriefData:
         # Remove leading/trailing underscores
         s = s.strip("_")
         return s
+
+
+@dataclass(frozen=True)
+class BriefIssue:
+    severity: str
+    title: str
+    detail: str
+    field_name: str | None = None
+
+
+@dataclass(frozen=True)
+class BriefReview:
+    status: str
+    issues: List[BriefIssue] = field(default_factory=list)
+    extracted_fields: dict[str, Any] = field(default_factory=dict)

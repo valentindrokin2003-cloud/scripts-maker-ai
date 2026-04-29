@@ -38,9 +38,12 @@ wheels/
 # Logs
 *.log
 agent_*.log
+logs/
+.runtime/
 
-# Output notebooks (generated from briefs)
-output/*.ipynb
+# Output artifacts (generated from briefs and UI runs)
+output/**
+!output/.gitkeep
 
 # Test data files
 data/test_*.xlsx
@@ -51,6 +54,7 @@ data/ТЗ_IP_Denisov.xlsx
 # OS
 .DS_Store
 .DS_Store?
+*:Zone.Identifier
 ._*
 .Spotlight-V100
 .Trashes

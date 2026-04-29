@@ -1,5 +1,5 @@
 from src.models import BriefData
-from agent import build_replacements
+from src.notebook_replacements import build_replacements
 
 
 def _brief(**kwargs):
@@ -18,7 +18,7 @@ def test_all_11_markers_present():
     expected_markers = [
         "##AGENT:name##", "##AGENT:inn_client##", "##AGENT:date_filter##",
         "##AGENT:date_filter2##", "##AGENT:lst_sbersov##", "##AGENT:list_words##",
-        "##AGENT:regions##", "##AGENT:okved_list##", "##AGENT:exclusions##",
+        "##AGENT:regions_filter##", "##AGENT:okved_list##", "##AGENT:exclusions##",
         "##AGENT:revenue##", "##AGENT:trans_thresholds##",
     ]
     for marker in expected_markers:
@@ -91,5 +91,27 @@ def test_list_words_populated():
     bd = _brief()
     r = build_replacements(bd, "2025-09-17", "2026-03-17", [], patterns)
     output = r["##AGENT:list_words##"]
-    # Check that the pattern appears in the list as raw string: r"..."
-    assert r'r"\bфасадн\w{0,3}\b"' in output
+    assert r"r'\bфасадн\w{0,3}\b'" in output
+    assert r"'\\bфасадн\\w{0,3}\\b'" not in output
+    ns = {}
+    exec(output.replace("# ##AGENT:list_words##\n", ""), ns)
+    assert ns["list_words"] == patterns
+
+
+def test_list_words_with_quotes_produces_valid_python():
+    patterns = [r'\bbrand "x"\b']
+    bd = _brief()
+    r = build_replacements(bd, "2025-09-17", "2026-03-17", [], patterns)
+    src = r["##AGENT:list_words##"]
+    ns = {}
+    exec(src.replace("# ##AGENT:list_words##\n", ""), ns)
+    assert ns["list_words"] == patterns
+
+
+def test_regions_filter_supports_mixed_regions_and_federal_districts():
+    bd = _brief(regions=["Новосибирская область"], f_ocrygs=["СФО", "ЦФО"])
+    r = build_replacements(bd, "2025-09-17", "2026-03-17", [], [])
+    output = r["##AGENT:regions_filter##"]
+    assert "regions = ['Новосибирская область']" in output
+    assert "f_ocrygs = ['СФО', 'ЦФО']" in output
+    assert "F.col('region').isin(regions) | F.col('f_ocryg').isin(f_ocrygs)" in output

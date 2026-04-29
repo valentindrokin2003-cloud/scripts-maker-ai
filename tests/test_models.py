@@ -18,7 +18,9 @@ def test_briefdata_defaults():
     )
     assert bd.product_words == []
     assert bd.regions == []
+    assert bd.f_ocrygs == []
     assert bd.okved_list == []
+    assert bd.okved_explanations == {}
     assert bd.exclusions == []
     assert bd.revenue_min == 100_000_000
     assert bd.revenue_max is None

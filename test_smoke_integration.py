@@ -1,35 +1,48 @@
 #!/usr/bin/env python3
-"""
-Smoke test for B2B Script Agent — tests end-to-end integration with mocked Claude API.
-Verifies that all notebook markers are filled correctly with realistic data.
-"""
-import json
+"""Smoke test for B2B Script Agent with mocked LLM calls."""
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import nbformat
+import openpyxl
 
 from src.brief_extractor import BriefData
-from src.date_resolver import resolve_dates
-from src.excel_parser import parse_excel_to_text
-from src.notebook_filler import fill_notebook, load_template, save_notebook
-from src.regex_generator import generate_regex
-from src.words_matcher import match_words
-from agent import build_replacements
+from src.pipeline import run_pipeline
+from src.settings import AgentSettings
 
 TEMPLATE_PATH = "templates/b2b_template.ipynb"
 DICT_PATH = "data/words_ok_groups_v2.xlsx"
-BRIEF_PATH = "data/ТЗ по подбору В2В- ООО Фреш.xlsx"
-OUTPUT_PATH = "output/test_smoke_output.ipynb"
 
 
-def mock_claude_field_extraction():
-    """Mock Claude's field extraction response."""
+def make_minimal_brief_xlsx(path: Path) -> None:
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Бриф"
+    rows = [
+        ("Название компании заказчика", "ООО Фреш"),
+        ("ИНН заказчика", "5009138436"),
+        ("Период анализа", "с 2025-09-17 по 2026-03-17"),
+        ("Потребляемая продукция", "Панель, Фасад"),
+        ("Регионы", "Московская область"),
+        ("ОКВЭД", "45.23"),
+        ("Исключения", "7722406860"),
+        ("Выручка", "100000000-500000000"),
+        ("Сумма транзакций", "10000000"),
+        ("Количество транзакций", "3"),
+    ]
+    for row in rows:
+        ws.append(row)
+    wb.save(path)
+
+
+def mock_llm_field_extraction(excel_text, client, model):
+    """Mock the LLM field extraction response."""
+    assert "ООО Фреш" in excel_text
+    assert "5009138436" in excel_text
     return BriefData(
         name="ООО Фреш",
         inn_client=["5009138436"],
-        analysis_period="last_N_months:6",
+        analysis_period="range:2025-09-17:2026-03-17",
         product_words=["Панель", "Фасад"],
         regions=["Московская область"],
         okved_list=["45.23"],
@@ -41,8 +54,9 @@ def mock_claude_field_extraction():
     )
 
 
-def mock_claude_regex_generation(product_words):
-    """Mock Claude's regex generation response."""
+def mock_llm_regex_generation(product_words, client, model):
+    """Mock the LLM regex generation response."""
+    assert product_words == ["Панель", "Фасад"]
     return [
         r"\bфасадн\w{0,3}[-/ ]*кассет\w{0,3}\b",
         r"\bкассет\w{0,3}[-/ ]*фасадн\w{0,3}\b",
@@ -51,50 +65,34 @@ def mock_claude_regex_generation(product_words):
     ]
 
 
-def test_smoke_integration():
+def test_smoke_integration(tmp_path):
     """Run end-to-end integration test with realistic data."""
     print("\n=== B2B Script Agent Smoke Test ===\n")
 
-    # Step 1: Read Excel (real)
-    print("[1/6] Reading Excel brief...")
-    if not Path(BRIEF_PATH).exists():
-        print(f"❌ Brief file not found: {BRIEF_PATH}")
-        return False
-    excel_text = parse_excel_to_text(BRIEF_PATH)
-    print(f"✓ Read {len(excel_text)} chars from Excel")
+    brief_path = tmp_path / "brief.xlsx"
+    output_dir = tmp_path / "output"
+    make_minimal_brief_xlsx(brief_path)
 
-    # Step 2: Extract fields (mocked Claude call 1)
-    print("[2/6] Extracting fields (mocked)...")
-    brief = mock_claude_field_extraction()
-    print(f"✓ Extracted: name={brief.name!r}, inn_client={brief.inn_client}")
-
-    # Step 3: Resolve dates (real)
-    print("[3/6] Resolving dates...")
-    start_date, end_date = resolve_dates(brief.analysis_period)
-    print(f"✓ Dates: {start_date} to {end_date}")
-
-    # Step 4: Match words (real)
-    print("[4/6] Matching product words...")
-    lst_sbersov = match_words(brief.product_words, DICT_PATH)
-    print(f"✓ Matched words: {lst_sbersov}")
-
-    # Step 5: Generate regex (mocked Claude call 2)
-    print("[5/6] Generating regex patterns (mocked)...")
-    list_words = mock_claude_regex_generation(brief.product_words)
-    print(f"✓ Generated {len(list_words)} regex patterns")
-
-    # Step 6: Fill notebook (real)
-    print("[6/6] Filling notebook template...")
-    replacements = build_replacements(brief, start_date, end_date, lst_sbersov, list_words)
-
-    nb = load_template(TEMPLATE_PATH)
-    fill_notebook(nb, replacements)  # modifies nb in-place
-    save_notebook(nb, OUTPUT_PATH)
-    print(f"✓ Saved to {OUTPUT_PATH}")
+    settings = AgentSettings(
+        api_key=None,
+        template_path=TEMPLATE_PATH,
+        dict_path=DICT_PATH,
+        output_dir=str(output_dir),
+    )
+    result = run_pipeline(
+        str(brief_path),
+        str(output_dir),
+        settings,
+        client=None,
+        progress=print,
+        brief_extractor=mock_llm_field_extraction,
+        regex_generator=mock_llm_regex_generation,
+    )
+    print(f"✓ Saved to {result.output_path}")
 
     # Verification: Check that all expected values are present
     print("\n=== Verification ===\n")
-    nb = nbformat.read(OUTPUT_PATH, as_version=4)
+    nb = nbformat.read(result.output_path, as_version=4)
 
     # Check for expected filled values (not just markers)
     expected_values = {
@@ -122,9 +120,9 @@ def test_smoke_integration():
         print("❌ MISSING EXPECTED VALUES:")
         for key in missing:
             print(f"   {key}: {expected_values[key]}")
-        return False
+        raise AssertionError(f"Missing expected values: {missing}")
 
-    print(f"✓ All {len(found_values)}/8 expected values found in notebook")
+    print(f"✓ All {len(found_values)}/{len(expected_values)} expected values found in notebook")
 
     # Count markers that are present (markers are supposed to be there with values)
     markers_present = sum(
@@ -135,7 +133,7 @@ def test_smoke_integration():
             "##AGENT:date_filter2##",
             "##AGENT:lst_sbersov##",
             "##AGENT:list_words##",
-            "##AGENT:regions##",
+            "##AGENT:regions_filter##",
             "##AGENT:okved_list##",
             "##AGENT:exclusions##",
             "##AGENT:revenue##",
@@ -160,9 +158,11 @@ def test_smoke_integration():
             break
 
     print("\n✅ SMOKE TEST PASSED")
-    return True
+    assert True
 
 
 if __name__ == "__main__":
-    success = test_smoke_integration()
-    sys.exit(0 if success else 1)
+    path = Path("output/smoke_fixture")
+    path.mkdir(parents=True, exist_ok=True)
+    test_smoke_integration(path)
+    sys.exit(0)
