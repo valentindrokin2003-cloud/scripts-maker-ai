@@ -35,6 +35,9 @@ wheels/
 *.swo
 *~
 
+# Local tooling
+.local/
+
 # Logs
 *.log
 agent_*.log

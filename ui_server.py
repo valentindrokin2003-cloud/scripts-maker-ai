@@ -25,7 +25,7 @@ from dotenv import load_dotenv
 from src.brief_extractor import BriefExtractionError
 from src.llm_client import create_openai_client
 from src.models import BriefReview
-from src.pipeline import run_pipeline
+from src.pipeline import PipelineCancelledError, run_pipeline
 from src.settings import AgentSettings
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -40,6 +40,8 @@ JOB_TTL_SECONDS = 60 * 60
 JOB_STORE: dict[str, dict[str, Any]] = {}
 JOB_STORE_LOCK = threading.Lock()
 JOB_QUEUE: list[tuple[str, Path, str]] = []
+CANCEL_EVENTS: dict[str, threading.Event] = {}
+RUNNING_JOB_ID: str | None = None
 QUEUE_PROCESSOR_ACTIVE = False
 
 
@@ -197,6 +199,7 @@ def _cleanup_jobs() -> None:
         ]
         for job_id in expired:
             JOB_STORE.pop(job_id, None)
+            CANCEL_EVENTS.pop(job_id, None)
         if expired:
             expired_ids = set(expired)
             JOB_QUEUE[:] = [
@@ -263,7 +266,7 @@ def _refresh_queue_positions_locked() -> None:
 def _append_job_progress(job_id: str, message: str) -> None:
     with JOB_STORE_LOCK:
         job = JOB_STORE.get(job_id)
-        if not job:
+        if not job or job["status"] == "cancelled":
             return
 
         step_index = _step_index_from_message(message)
@@ -308,6 +311,9 @@ def _finish_job(job_id: str, output_path: str) -> None:
         job["output_path"] = output_path
         job["queue_position"] = None
         job["updated_at"] = time.time()
+        global RUNNING_JOB_ID
+        if RUNNING_JOB_ID == job_id:
+            RUNNING_JOB_ID = None
 
 
 def _fail_job(job_id: str, error: str) -> None:
@@ -326,7 +332,35 @@ def _fail_job(job_id: str, error: str) -> None:
         job["message"] = error
         job["queue_position"] = None
         job["updated_at"] = time.time()
+        global RUNNING_JOB_ID
+        if RUNNING_JOB_ID == job_id:
+            RUNNING_JOB_ID = None
     _attach_failure_report(job_id, error)
+
+
+def _cancel_job(job_id: str) -> None:
+    cancel_event = CANCEL_EVENTS.get(job_id)
+    if cancel_event:
+        cancel_event.set()
+
+    with JOB_STORE_LOCK:
+        job = JOB_STORE.get(job_id)
+        if not job:
+            return
+        for step in job["steps"]:
+            if step["status"] == "active":
+                step["status"] = "cancelled"
+                step["detail"] = "Задача отменена пользователем"
+                break
+        job["status"] = "cancelled"
+        job["message"] = "Задача отменена пользователем."
+        job["queue_position"] = None
+        job["updated_at"] = time.time()
+        JOB_QUEUE[:] = [item for item in JOB_QUEUE if item[0] != job_id]
+        _refresh_queue_positions_locked()
+        global RUNNING_JOB_ID
+        if RUNNING_JOB_ID == job_id:
+            RUNNING_JOB_ID = None
 
 
 def _job_payload(job_id: str) -> dict[str, Any] | None:
@@ -345,6 +379,7 @@ def _job_payload(job_id: str) -> dict[str, Any] | None:
             "download_url": f"/api/jobs/{job_id}/download" if job.get("output_path") else None,
             "review": job["review"],
             "error": job["error"],
+            "cancellable": job["status"] in ("queued", "running"),
             "created_at": job["created_at"],
             "updated_at": job["updated_at"],
         }
@@ -360,6 +395,7 @@ def _job_summary(job: dict[str, Any]) -> dict[str, Any]:
         "queue_position": job["queue_position"],
         "download_url": f"/api/jobs/{job['job_id']}/download" if job.get("output_path") else None,
         "error": job["error"],
+        "cancellable": job["status"] in ("queued", "running"),
         "created_at": job["created_at"],
         "updated_at": job["updated_at"],
     }
@@ -379,6 +415,7 @@ def _jobs_payload() -> dict[str, Any]:
             "completed": sum(job["status"] == "completed" for job in summaries),
             "needs_revision": sum(job["status"] == "needs_revision" for job in summaries),
             "failed": sum(job["status"] == "failed" for job in summaries),
+            "cancelled": sum(job["status"] == "cancelled" for job in summaries),
         },
     }
 
@@ -695,6 +732,9 @@ def _mark_job_needs_revision(job_id: str, review: BriefReview) -> None:
         job["review"] = serialized_review
         job["queue_position"] = None
         job["updated_at"] = time.time()
+        global RUNNING_JOB_ID
+        if RUNNING_JOB_ID == job_id:
+            RUNNING_JOB_ID = None
     report_path = _create_job_report(
         job_id,
         report_suffix="review_report",
@@ -738,27 +778,49 @@ def _schedule_job(job_id: str, brief_path: Path, original_name: str) -> None:
 
 
 def _process_queue() -> None:
-    global QUEUE_PROCESSOR_ACTIVE
+    global QUEUE_PROCESSOR_ACTIVE, RUNNING_JOB_ID
 
     while True:
         with JOB_STORE_LOCK:
-            if not JOB_QUEUE:
+            if not JOB_QUEUE and RUNNING_JOB_ID is None:
                 QUEUE_PROCESSOR_ACTIVE = False
                 return
-            job_id, brief_path, original_name = JOB_QUEUE.pop(0)
-            job = JOB_STORE.get(job_id)
-            if job:
-                job["queue_position"] = None
-            _refresh_queue_positions_locked()
 
-        _run_job(job_id, brief_path, original_name)
+            if RUNNING_JOB_ID is not None or not JOB_QUEUE:
+                pass
+            else:
+                job_id, brief_path, original_name = JOB_QUEUE.pop(0)
+                job = JOB_STORE.get(job_id)
+                if job and job["status"] == "cancelled":
+                    continue
+                if job:
+                    job["queue_position"] = None
+                RUNNING_JOB_ID = job_id
+                _refresh_queue_positions_locked()
+                thread = threading.Thread(
+                    target=_run_job,
+                    args=(job_id, brief_path, original_name),
+                    daemon=True,
+                )
+                thread.start()
+
+        time.sleep(0.5)
 
 
 def _run_job(job_id: str, brief_path: Path, original_name: str) -> None:
+    global RUNNING_JOB_ID
+    cancel_event = threading.Event()
+    CANCEL_EVENTS[job_id] = cancel_event
+
     try:
         settings = AgentSettings.from_env()
         if not settings.api_key:
             raise ValueError("DEEPSEEK_API_KEY не задан в .env")
+
+        def _progress_callback(message: str) -> None:
+            if cancel_event.is_set():
+                raise PipelineCancelledError("Pipeline cancelled by user")
+            _append_job_progress(job_id, message)
 
         output_dir = str(brief_path.parent.parent / "output")
         client = create_openai_client(settings)
@@ -767,7 +829,8 @@ def _run_job(job_id: str, brief_path: Path, original_name: str) -> None:
             output_dir,
             settings,
             client,
-            progress=lambda message: _append_job_progress(job_id, message),
+            progress=_progress_callback,
+            cancel_event=cancel_event,
         )
         if result.status == "needs_revision" and result.review is not None:
             _mark_job_needs_revision(job_id, result.review)
@@ -781,11 +844,18 @@ def _run_job(job_id: str, brief_path: Path, original_name: str) -> None:
         final_path = _unique_path(final_dir / Path(result.output_path).name)
         shutil.copy2(result.output_path, final_path)
         _finish_job(job_id, str(final_path))
+    except PipelineCancelledError:
+        logger.info("Job %s (%s) was cancelled by user", job_id, original_name)
+        with JOB_STORE_LOCK:
+            if RUNNING_JOB_ID == job_id:
+                RUNNING_JOB_ID = None
     except BriefExtractionError as exc:
         _fail_job(job_id, f"Не удалось разобрать бриф: {exc}")
     except Exception as exc:  # noqa: BLE001 - UI needs readable failure details
         logger.exception("Notebook generation failed for job %s", job_id)
         _fail_job(job_id, f"Ошибка генерации: {type(exc).__name__}: {exc}")
+    finally:
+        CANCEL_EVENTS.pop(job_id, None)
 
 
 class B2BUIHandler(BaseHTTPRequestHandler):
@@ -837,6 +907,12 @@ class B2BUIHandler(BaseHTTPRequestHandler):
 
         self._send_json(payload, HTTPStatus.ACCEPTED)
 
+    def do_DELETE(self) -> None:
+        if not self.path.startswith("/api/jobs/"):
+            self._send_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
+            return
+        self._handle_job_cancel()
+
     def _create_generation_job(self) -> dict[str, Any]:
         content_length = int(self.headers.get("Content-Length", "0"))
         _validate_request_size(content_length)
@@ -868,6 +944,31 @@ class B2BUIHandler(BaseHTTPRequestHandler):
             "jobs": created_jobs,
             "accepted": len(created_jobs),
         }
+
+    def _handle_job_cancel(self) -> None:
+        path = self.path.rstrip("/")
+        parts = path.split("/")
+        if len(parts) != 5 or parts[4] != "cancel":
+            self._send_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
+            return
+
+        job_id = parts[3]
+        with JOB_STORE_LOCK:
+            job = JOB_STORE.get(job_id)
+        if not job:
+            self._send_json({"error": "Задача не найдена"}, HTTPStatus.NOT_FOUND)
+            return
+
+        if job["status"] not in ("queued", "running"):
+            self._send_json(
+                {"error": f"Задачу в статусе '{job['status']}' нельзя отменить"},
+                HTTPStatus.CONFLICT,
+            )
+            return
+
+        _cancel_job(job_id)
+        payload = _job_payload(job_id)
+        self._send_json(payload or {"job_id": job_id, "status": "cancelled"}, HTTPStatus.OK)
 
     def _handle_job_get(self) -> None:
         path = self.path.rstrip("/")

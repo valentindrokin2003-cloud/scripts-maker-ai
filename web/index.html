@@ -8,7 +8,7 @@
   </head>
   <body>
     <main class="workspace">
-      <aside class="sidebar" aria-label="Навигация">
+      <aside class="sidebar" aria-label="Контекст сервиса">
         <div class="brand">
           <div class="brand__mark" aria-hidden="true">
             <span></span>
@@ -19,279 +19,442 @@
           </div>
         </div>
 
-        <nav class="menu">
-          <a class="menu__item menu__item--active" href="#">
-            <span class="menu__icon" aria-hidden="true">
-              <svg viewBox="0 0 20 20"><path d="M4 5h12v2H4zm0 4h8v2H4zm0 4h12v2H4z"/></svg>
-            </span>
-            <span>Генерация скрипта</span>
-          </a>
-          <a class="menu__item" href="#">
-            <span class="menu__icon" aria-hidden="true">
-              <svg viewBox="0 0 20 20"><path d="M10 3l7 4v6l-7 4-7-4V7zm0 2.2L5 8v4l5 2.8 5-2.8V8z"/></svg>
-            </span>
-            <span>Шаблон notebook</span>
-          </a>
-          <a class="menu__item" href="#">
-            <span class="menu__icon" aria-hidden="true">
-              <svg viewBox="0 0 20 20"><path d="M5 4h10v2H5zm0 5h10v2H5zm0 5h6v2H5z"/></svg>
-            </span>
-            <span>Пайплайн и логика</span>
-          </a>
-        </nav>
+        <div class="sidebar__stack">
+          <section class="sidebar-panel" aria-labelledby="sidebar-focus-title">
+            <p id="sidebar-focus-title" class="sidebar-panel__label">Фокус главного экрана</p>
+            <ul class="sidebar-nav">
+              <li>1. Добавьте брифы в очередь</li>
+              <li>2. Следите за активными задачами</li>
+              <li>3. Откройте детали выбранной генерации</li>
+            </ul>
+          </section>
 
-        <div class="sidebar-card">
-          <p class="sidebar-card__label">Текущий режим</p>
-          <strong>Excel brief -> notebook</strong>
-          <small>Локальный запуск, два LLM-вызова, итоговый `.ipynb` на скачивание.</small>
+          <div class="sidebar-card">
+            <p class="sidebar-card__label">Текущий режим</p>
+            <strong>Локальная очередь генерации notebook</strong>
+            <small id="sidebar-step-summary">
+              7 шагов от проверки Excel-брифа до готового `.ipynb`.
+            </small>
+          </div>
         </div>
       </aside>
 
       <div class="main-panel">
         <header class="topbar">
           <div class="topbar__profile">
-            <strong>Локальный UI сервер</strong>
-            <span>Генерация B2B-скриптов по Excel-брифу</span>
+            <p class="eyebrow">Task-first console</p>
+            <strong>Очередь, статус задач и детали выбранного брифа собраны на одном экране.</strong>
+            <span>
+              Сервис принимает `.xlsx`, обрабатывает их последовательно и показывает живое
+              состояние по каждому файлу без переключения между экранами.
+            </span>
           </div>
 
-          <div class="topbar__stats" aria-label="Сводка">
-            <div class="metric">
-              <span class="metric__ring" aria-hidden="true"></span>
+          <div class="topbar__stats" aria-label="Живые счётчики по задачам">
+            <article class="metric" data-status="queued">
+              <span class="metric__signal" aria-hidden="true"></span>
               <div>
-                <strong>5 этапов</strong>
-                <small>pipeline</small>
+                <small>В очереди</small>
+                <strong id="count-queued">0</strong>
               </div>
-            </div>
-            <div class="metric">
-              <span class="metric__line" aria-hidden="true"></span>
+            </article>
+            <article class="metric" data-status="running">
+              <span class="metric__signal" aria-hidden="true"></span>
               <div>
-                <strong>xlsx -> ipynb</strong>
-                <small>формат вывода</small>
+                <small>В работе</small>
+                <strong id="count-running">0</strong>
               </div>
-            </div>
-            <div class="metric">
-              <span class="metric__dot" aria-hidden="true"></span>
+            </article>
+            <article class="metric" data-status="completed">
+              <span class="metric__signal" aria-hidden="true"></span>
               <div>
-                <strong>DeepSeek API</strong>
-                <small>извлечение и regex</small>
+                <small>Готово</small>
+                <strong id="count-completed">0</strong>
               </div>
-            </div>
+            </article>
+            <article class="metric" data-status="needs_revision">
+              <span class="metric__signal" aria-hidden="true"></span>
+              <div>
+                <small>Нужна доработка</small>
+                <strong id="count-needs-revision">0</strong>
+              </div>
+            </article>
+            <article class="metric" data-status="failed">
+              <span class="metric__signal" aria-hidden="true"></span>
+              <div>
+                <small>Ошибка</small>
+                <strong id="count-failed">0</strong>
+              </div>
+            </article>
+            <article class="metric" data-status="cancelled">
+              <span class="metric__signal" aria-hidden="true"></span>
+              <div>
+                <small>Отменено</small>
+                <strong id="count-cancelled">0</strong>
+              </div>
+            </article>
           </div>
         </header>
 
         <section class="intro" aria-labelledby="page-title">
-          <p class="eyebrow">Сборка сценария</p>
-          <h1 id="page-title">Сервис собирает аналитический notebook по брифу без ручной подготовки.</h1>
-          <p class="intro__lead">
-            Загрузите Excel-файл клиента, а сервис сам проведет разбор брифа, подготовит
-            параметры выборки и вернет готовый рабочий notebook для команды аналитики.
-          </p>
+          <div class="intro__copy">
+            <p class="eyebrow">Сборка сценария</p>
+            <h1 id="page-title">
+              Загрузите пакет брифов, контролируйте очередь и открывайте детали по нужной
+              задаче без лишней навигации.
+            </h1>
+            <p class="intro__lead">
+              Панель показывает реальные статусы задач, 7 шагов пайплайна и замечания по
+              брифам, которые нужно доработать до генерации notebook.
+            </p>
+          </div>
 
-          <div class="mode-switch" aria-label="Режимы">
-            <button class="mode-switch__item mode-switch__item--active" type="button" data-target="upload-section">Загрузка брифов</button>
-            <button class="mode-switch__item" type="button" data-target="queue-section">Очередь</button>
-            <button class="mode-switch__item" type="button" data-target="ready-section">Готовый notebook</button>
+          <div class="intro__panel" aria-label="Как устроен поток">
+            <strong>Как устроен поток</strong>
+            <ol class="intro__steps">
+              <li>Добавьте до 10 `.xlsx` в очередь одним действием.</li>
+              <li>Следите за очередью, активной обработкой и проблемными кейсами.</li>
+              <li>Откройте детали выбранной задачи и скачайте notebook или отчет прямо из карточки.</li>
+            </ol>
           </div>
         </section>
 
-        <section class="filters" aria-label="Параметры">
-          <div class="filter filter--search">
-            <span class="filter__icon" aria-hidden="true">
-              <svg viewBox="0 0 20 20"><path d="M8.5 3a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11m0-2a7.5 7.5 0 1 0 4.72 13.33l4.22 4.23 1.41-1.42-4.22-4.22A7.5 7.5 0 0 0 8.5 1"/></svg>
-            </span>
-            <span>Входной документ: Excel-бриф клиента</span>
-          </div>
-          <div class="filter">
-            <span>Извлечение:</span>
-            <strong>LLM + правила сервиса</strong>
-          </div>
-          <div class="filter">
-            <span>Результат:</span>
-            <strong>Очередь + `.ipynb` архив</strong>
-          </div>
-          <button class="filters__action" type="button" aria-label="Очистить выбранный файл">
-            <svg viewBox="0 0 20 20"><path d="M10 4a6 6 0 0 1 5.66 4H13v2h5V5h-2v2.1A8 8 0 1 0 18 10h-2a6 6 0 1 1-6-6"/></svg>
-          </button>
-        </section>
-
-        <section class="content-grid">
-          <div class="work-column">
-            <section id="upload-section" class="upload-card" aria-label="Генерация скрипта">
-              <div class="section-head">
-                <div>
-                  <h2>Запуск очереди</h2>
-                  <p>Загрузите сразу несколько Excel-брифов. Сервис поставит их в очередь и обработает по одному.</p>
-                </div>
-                <span class="section-head__badge">Пакетный режим</span>
+        <section class="task-stack">
+          <section id="upload-section" class="upload-card" aria-labelledby="upload-title">
+            <div class="section-head">
+              <div>
+                <h2 id="upload-title">Добавьте брифы в очередь</h2>
+                <p>
+                  Один основной сценарий: загрузите пакет Excel-брифов, а сервис сам
+                  поставит задачи в последовательную обработку.
+                </p>
               </div>
+              <span class="section-head__badge">До 10 файлов</span>
+            </div>
 
-              <form id="brief-form" class="dropzone">
-                <input id="brief-input" name="brief" type="file" accept=".xlsx" multiple required />
-                <label for="brief-input" class="dropzone__label">
-                  <span class="dropzone__eyebrow">Пакет брифов</span>
-                  <strong id="file-name">Перетащите Excel-брифы сюда или выберите файлы</strong>
-                  <small id="file-caption">
-                    После отправки каждый бриф появится в очереди. Готовые notebook останутся в отдельном разделе и будут доступны для скачивания.
-                  </small>
-                  <span class="dropzone__pill">Только `.xlsx`, несколько файлов</span>
-                </label>
+            <div class="upload-meta" aria-label="Ограничения загрузки">
+              <div class="upload-meta__item">
+                <span>Формат</span>
+                <strong>.xlsx</strong>
+              </div>
+              <div class="upload-meta__item">
+                <span>Лимит</span>
+                <strong>До 10 файлов</strong>
+              </div>
+              <div class="upload-meta__item">
+                <span>Обработка</span>
+                <strong>Последовательно</strong>
+              </div>
+            </div>
 
-                <div id="selected-files" class="selected-files" hidden></div>
+            <form id="brief-form" class="dropzone">
+              <input id="brief-input" name="brief" type="file" accept=".xlsx" multiple required />
+              <label for="brief-input" class="dropzone__label" tabindex="0">
+                <span class="dropzone__eyebrow">Пакет брифов</span>
+                <strong id="file-name">Перетащите `.xlsx` сюда или выберите файлы</strong>
+                <small id="file-caption">
+                  После отправки каждый бриф попадет в очередь. Готовые notebook появятся в
+                  отдельном блоке, а проблемные задачи останутся в очереди с деталями и
+                  отчетом.
+                </small>
+                <span class="dropzone__pill">Drag-and-drop или выбор файлов</span>
+              </label>
 
-                <div class="actions">
-                  <button id="submit-button" class="primary-action" type="submit">
-                    <span class="primary-action__label">Добавить в очередь</span>
-                    <span class="primary-action__icon" aria-hidden="true">
-                      <svg viewBox="0 0 20 20"><path d="M4 10h9.17L10 6.83 11.41 5.4 17 11l-5.59 5.6L10 15.17 13.17 12H4z"/></svg>
-                    </span>
-                  </button>
-                  <div class="action-hint">
-                    <strong id="batch-hint-count">До 10 файлов</strong>
-                    <span>Последовательная обработка, стабильная очередь и список готовых notebook</span>
+              <div id="upload-errors" class="upload-errors" hidden aria-live="polite"></div>
+              <div id="selected-files" class="selected-files" hidden></div>
+
+              <div class="actions">
+                <button id="submit-button" class="primary-action" type="submit">
+                  <span class="primary-action__label">Добавить брифы в очередь</span>
+                  <span class="primary-action__icon" aria-hidden="true">
+                    <svg viewBox="0 0 20 20"><path d="M4 10h9.17L10 6.83 11.41 5.4 17 11l-5.59 5.6L10 15.17 13.17 12H4z"/></svg>
+                  </span>
+                </button>
+                <div class="action-hint">
+                  <strong id="batch-hint-count">0 из 10 файлов</strong>
+                  <span>Очередь обрабатывается строго по одному брифу за раз.</span>
+                </div>
+                <button id="reset-button" class="secondary-action" type="button">
+                  Очистить выбор файлов
+                </button>
+              </div>
+            </form>
+
+            <div id="status" class="status" role="status" aria-live="polite">
+              <span class="status__beam"></span>
+              <div>
+                <strong>Текущий статус</strong>
+                <p>Ожидаю Excel-брифы для запуска очереди.</p>
+              </div>
+            </div>
+          </section>
+
+          <section id="queue-section" class="queue-card" aria-labelledby="queue-title">
+            <div class="section-head">
+              <div>
+                <h2 id="queue-title">Активные задачи и очередь</h2>
+                <p>
+                  Здесь видны ожидающие, выполняемые и проблемные брифы. Выберите задачу,
+                  чтобы открыть ее детали ниже.
+                </p>
+              </div>
+              <span id="queue-count" class="section-head__badge">0 задач</span>
+            </div>
+            <div
+              id="queue-filters"
+              class="queue-filters"
+              role="tablist"
+              aria-label="Фильтры задач по статусу"
+            >
+              <button
+                type="button"
+                class="queue-filter"
+                role="tab"
+                id="queue-filter-all"
+                aria-selected="true"
+                aria-controls="queue-list"
+                data-filter="all"
+              >
+                Все
+              </button>
+              <button
+                type="button"
+                class="queue-filter"
+                role="tab"
+                id="queue-filter-running"
+                aria-selected="false"
+                aria-controls="queue-list"
+                data-filter="running"
+              >
+                В работе
+              </button>
+              <button
+                type="button"
+                class="queue-filter"
+                role="tab"
+                id="queue-filter-queued"
+                aria-selected="false"
+                aria-controls="queue-list"
+                data-filter="queued"
+              >
+                В очереди
+              </button>
+              <button
+                type="button"
+                class="queue-filter"
+                role="tab"
+                id="queue-filter-needs-revision"
+                aria-selected="false"
+                aria-controls="queue-list"
+                data-filter="needs_revision"
+              >
+                Нужна доработка
+              </button>
+              <button
+                type="button"
+                class="queue-filter"
+                role="tab"
+                id="queue-filter-failed"
+                aria-selected="false"
+                aria-controls="queue-list"
+                data-filter="failed"
+              >
+                Ошибка
+              </button>
+              <button
+                type="button"
+                class="queue-filter"
+                role="tab"
+                id="queue-filter-cancelled"
+                aria-selected="false"
+                aria-controls="queue-list"
+                data-filter="cancelled"
+              >
+                Отменено
+              </button>
+            </div>
+            <div id="queue-list" class="job-list job-list--queue" role="tabpanel" aria-labelledby="queue-filter-all">
+              <article class="job-empty">
+                <strong>Очередь пуста</strong>
+                <p>Добавьте один или несколько `.xlsx`, и здесь появятся задачи с прогрессом.</p>
+              </article>
+            </div>
+          </section>
+
+          <section
+            id="details-section"
+            class="details-section"
+            aria-labelledby="details-title"
+            tabindex="-1"
+          >
+            <div class="section-head">
+              <div>
+                <h2 id="details-title">Детали выбранной задачи</h2>
+                <p>
+                  Прогресс, этапы пайплайна и замечания по конкретному брифу обновляются в
+                  реальном времени.
+                </p>
+              </div>
+              <span id="pipeline-count-badge" class="section-head__badge">7 шагов</span>
+            </div>
+
+            <div class="insight-panel" aria-label="Детали обработки">
+              <div id="selected-job-card" class="insight-panel__card selected-job-card">
+                <p class="selected-job-card__eyebrow">Выбранная задача</p>
+                <strong id="selected-job-name">Нет активной задачи</strong>
+                <p id="selected-job-message">
+                  Выберите элемент из очереди или загрузите новые брифы, чтобы смотреть
+                  прогресс и замечания по конкретной задаче.
+                </p>
+                <div class="selected-job-meta">
+                  <span id="selected-job-status" class="selected-job-status" data-status="idle">
+                    Ожидание
+                  </span>
+                  <span id="selected-job-position" class="selected-job-position">
+                    Очередь не сформирована
+                  </span>
+                  <span id="selected-job-updated" class="selected-job-updated">
+                    Обновление появится после запуска задачи
+                  </span>
+                </div>
+                <div class="selected-job-actions">
+                  <div class="selected-job-action-block">
+                    <span class="selected-job-actions__label">Доступное действие</span>
+                    <div id="selected-job-action-status" class="selected-job-action-status">
+                      Действие появится после проверки или завершения задачи.
+                    </div>
                   </div>
-                </div>
-              </form>
-
-              <div id="status" class="status" role="status" aria-live="polite">
-                <span class="status__beam"></span>
-                <div>
-                  <strong>Текущий статус</strong>
-                  <p>Ожидаю Excel-брифы для запуска обработки.</p>
+                  <div id="selected-job-actions" class="selected-job-actions__buttons"></div>
                 </div>
               </div>
-            </section>
 
-            <section id="queue-section" class="queue-card" aria-labelledby="queue-title">
-              <div class="section-head">
-                <div>
-                  <h2 id="queue-title">Очередь задач</h2>
-                  <p>Здесь видны все загруженные брифы, их порядок обработки и проблемные кейсы.</p>
+              <div class="insight-panel__card insight-panel__card--accent">
+                <div class="mini-stat">
+                  <span id="progress-value" class="mini-stat__value">0%</span>
+                  <span class="mini-stat__label">готовность текущей задачи</span>
                 </div>
-                <span id="queue-count" class="section-head__badge">0 задач</span>
-              </div>
-              <div id="queue-list" class="job-list job-list--queue">
-                <article class="job-empty">
-                  <strong>Очередь пуста</strong>
-                  <p>Добавьте один или несколько `.xlsx`, и здесь появятся задачи с прогрессом и статусами.</p>
-                </article>
-              </div>
-            </section>
-
-            <section id="ready-section" class="ready-card" aria-labelledby="ready-title">
-              <div class="section-head">
-                <div>
-                  <h2 id="ready-title">Готовый notebook</h2>
-                  <p>Успешно собранные файлы остаются здесь до конца сессии и доступны для скачивания в любой момент.</p>
-                </div>
-                <span id="ready-count" class="section-head__badge">0 файлов</span>
-              </div>
-              <div id="ready-list" class="job-list job-list--ready">
-                <article class="job-empty">
-                  <strong>Пока пусто</strong>
-                  <p>Когда обработка завершится успешно, готовые `.ipynb` появятся здесь.</p>
-                </article>
-              </div>
-            </section>
-          </div>
-
-          <aside class="insight-panel" aria-label="Этапы обработки">
-            <div id="selected-job-card" class="insight-panel__card selected-job-card">
-              <p class="selected-job-card__eyebrow">Выбранная задача</p>
-              <strong id="selected-job-name">Нет активной задачи</strong>
-              <p id="selected-job-message">Выберите элемент из очереди или загрузите новые брифы, чтобы смотреть прогресс и замечания по конкретной задаче.</p>
-              <div class="selected-job-meta">
-                <span id="selected-job-status" class="selected-job-status" data-status="idle">Ожидание</span>
-                <span id="selected-job-position" class="selected-job-position">Очередь не сформирована</span>
-              </div>
-            </div>
-
-            <div class="insight-panel__card insight-panel__card--accent">
-              <div class="mini-stat">
-                <span id="progress-value" class="mini-stat__value">0%</span>
-                <span class="mini-stat__label">готовность текущей задачи</span>
-              </div>
-              <p id="progress-summary">После запуска здесь появится живой прогресс по этапам обработки брифа.</p>
-            </div>
-
-            <div id="pipeline-list" class="pipeline-list">
-              <article class="pipeline-item" data-step="0">
-                <span>01</span>
-                <div>
-                  <strong>Проверка и чтение Excel</strong>
-                  <p data-default="Сервис принимает файл, проверяет формат и извлекает текст брифа.">Сервис принимает файл, проверяет формат и извлекает текст брифа.</p>
-                </div>
-              </article>
-              <article class="pipeline-item" data-step="1">
-                <span>02</span>
-                <div>
-                  <strong>Извлечение полей из брифа</strong>
-                  <p data-default="Название клиента, ИНН, период, регионы и товарные формулировки.">Название клиента, ИНН, период, регионы и товарные формулировки.</p>
-                </div>
-              </article>
-              <article class="pipeline-item" data-step="2">
-                <span>03</span>
-                <div>
-                  <strong>Проверка качества брифа</strong>
-                  <p data-default="Сервис оценивает, достаточно ли ясен бриф для дальнейшей генерации.">Сервис оценивает, достаточно ли ясен бриф для дальнейшей генерации.</p>
-                </div>
-              </article>
-              <article class="pipeline-item" data-step="3">
-                <span>04</span>
-                <div>
-                  <strong>Нормализация периода</strong>
-                  <p data-default="Период анализа приводится к рабочему формату для notebook.">Период анализа приводится к рабочему формату для notebook.</p>
-                </div>
-              </article>
-              <article class="pipeline-item" data-step="4">
-                <span>05</span>
-                <div>
-                  <strong>Сопоставление со словарем</strong>
-                  <p data-default="Товарные слова проверяются по словарю и подготавливаются к поиску.">Товарные слова проверяются по словарю и подготавливаются к поиску.</p>
-                </div>
-              </article>
-              <article class="pipeline-item" data-step="5">
-                <span>06</span>
-                <div>
-                  <strong>Построение regex</strong>
-                  <p data-default="Сервис формирует выражения для отбора потенциальных клиентов.">Сервис формирует выражения для отбора потенциальных клиентов.</p>
-                </div>
-              </article>
-              <article class="pipeline-item" data-step="6">
-                <span>07</span>
-                <div>
-                  <strong>Сборка итогового notebook</strong>
-                  <p data-default="Шаблон наполняется данными и становится готовым к скачиванию.">Шаблон наполняется данными и становится готовым к скачиванию.</p>
-                </div>
-              </article>
-            </div>
-
-            <section id="review-panel" class="review-panel" hidden aria-live="polite">
-              <div class="review-panel__header">
-                <div>
-                  <p class="review-panel__eyebrow">Нужна доработка</p>
-                  <h3>Бриф требует уточнений перед генерацией notebook.</h3>
-                </div>
-                <span id="review-issue-count" class="review-panel__badge">0 замечаний</span>
-              </div>
-
-              <div class="review-panel__summary">
-                <p id="review-summary">
-                  После проверки здесь появятся замечания и поля, которые сервис успел понять.
+                <div id="progress-step" class="progress-step">Шаг 0 из 7</div>
+                <p id="progress-summary">
+                  После запуска здесь появится живой прогресс по этапам обработки брифа.
                 </p>
               </div>
 
-              <div class="review-columns">
-                <div>
-                  <h4>Замечания</h4>
-                  <div id="review-issues" class="review-issues"></div>
-                </div>
-                <div>
-                  <h4>Что сервис уже понял</h4>
-                  <dl id="review-fields" class="review-fields"></dl>
-                </div>
+              <div id="pipeline-list" class="pipeline-list">
+                <article class="pipeline-item" data-step="0">
+                  <span>01</span>
+                  <div>
+                    <strong>Проверка и чтение Excel</strong>
+                    <p data-default="Сервис принимает файл, проверяет формат и извлекает текст брифа.">
+                      Сервис принимает файл, проверяет формат и извлекает текст брифа.
+                    </p>
+                  </div>
+                </article>
+                <article class="pipeline-item" data-step="1">
+                  <span>02</span>
+                  <div>
+                    <strong>Извлечение полей из брифа</strong>
+                    <p data-default="Название клиента, ИНН, период, регионы и товарные формулировки.">
+                      Название клиента, ИНН, период, регионы и товарные формулировки.
+                    </p>
+                  </div>
+                </article>
+                <article class="pipeline-item" data-step="2">
+                  <span>03</span>
+                  <div>
+                    <strong>Проверка качества брифа</strong>
+                    <p data-default="Сервис оценивает, достаточно ли ясен бриф для дальнейшей генерации.">
+                      Сервис оценивает, достаточно ли ясен бриф для дальнейшей генерации.
+                    </p>
+                  </div>
+                </article>
+                <article class="pipeline-item" data-step="3">
+                  <span>04</span>
+                  <div>
+                    <strong>Нормализация периода</strong>
+                    <p data-default="Период анализа приводится к рабочему формату для notebook.">
+                      Период анализа приводится к рабочему формату для notebook.
+                    </p>
+                  </div>
+                </article>
+                <article class="pipeline-item" data-step="4">
+                  <span>05</span>
+                  <div>
+                    <strong>Сопоставление со словарем</strong>
+                    <p data-default="Товарные слова проверяются по словарю и подготавливаются к поиску.">
+                      Товарные слова проверяются по словарю и подготавливаются к поиску.
+                    </p>
+                  </div>
+                </article>
+                <article class="pipeline-item" data-step="5">
+                  <span>06</span>
+                  <div>
+                    <strong>Построение regex</strong>
+                    <p data-default="Сервис формирует выражения для отбора потенциальных клиентов.">
+                      Сервис формирует выражения для отбора потенциальных клиентов.
+                    </p>
+                  </div>
+                </article>
+                <article class="pipeline-item" data-step="6">
+                  <span>07</span>
+                  <div>
+                    <strong>Сборка итогового notebook</strong>
+                    <p data-default="Шаблон наполняется данными и становится готовым к скачиванию.">
+                      Шаблон наполняется данными и становится готовым к скачиванию.
+                    </p>
+                  </div>
+                </article>
               </div>
-            </section>
-          </aside>
+
+              <section id="review-panel" class="review-panel" hidden aria-live="polite">
+                <div class="review-panel__header">
+                  <div>
+                    <p class="review-panel__eyebrow">Нужна доработка</p>
+                    <h3>Бриф требует уточнений перед генерацией notebook.</h3>
+                  </div>
+                  <span id="review-issue-count" class="review-panel__badge">0 замечаний</span>
+                </div>
+
+                <div class="review-panel__summary">
+                  <p id="review-summary">
+                    После проверки здесь появятся замечания и поля, которые сервис успел
+                    понять.
+                  </p>
+                </div>
+                <div id="review-next-steps" class="review-next-steps"></div>
+                <div id="review-actions" class="review-actions"></div>
+
+                <div class="review-columns">
+                  <div>
+                    <h4>Замечания</h4>
+                    <div id="review-issues" class="review-issues"></div>
+                  </div>
+                  <div>
+                    <h4>Что сервис уже понял</h4>
+                    <dl id="review-fields" class="review-fields"></dl>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section id="ready-section" class="ready-card" aria-labelledby="ready-title">
+            <div class="section-head">
+              <div>
+                <h2 id="ready-title">Готовые notebook</h2>
+                <p>
+                  Успешно собранные `.ipynb` остаются доступны для скачивания в любой момент
+                  текущей сессии.
+                </p>
+              </div>
+              <span id="ready-count" class="section-head__badge">0 файлов</span>
+            </div>
+            <div id="ready-list" class="job-list job-list--ready">
+              <article class="job-empty">
+                <strong>Пока пусто</strong>
+                <p>Когда обработка завершится успешно, готовые `.ipynb` появятся здесь.</p>
+              </article>
+            </div>
+          </section>
         </section>
       </div>
     </main>
