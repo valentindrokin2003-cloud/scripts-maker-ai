@@ -39,6 +39,7 @@ ENDINGS = (
     "ем",
     "а",
     "я",
+    "й",
     "ы",
     "и",
     "е",
@@ -227,8 +228,8 @@ def _phrase_patterns(phrase: str) -> list[str]:
         right_pattern = _word_pattern(right)
         patterns.extend(
             [
-                rf"\b{left_pattern}{SEPARATOR}{OPTIONAL_CONNECTOR}{right_pattern}\b",
-                rf"\b{right_pattern}{SEPARATOR}{OPTIONAL_CONNECTOR}{left_pattern}\b",
+                rf"\b{left_pattern}{SEPARATOR}{right_pattern}\b",
+                rf"\b{right_pattern}{SEPARATOR}{left_pattern}\b",
             ]
         )
 
@@ -247,12 +248,14 @@ def _phrase_patterns(phrase: str) -> list[str]:
 
     first = _word_pattern(stems[0])
     last = _word_pattern(stems[tail_index])
-    middle = ""
+    fwd_middle = rev_middle = ""
     if tail_index > 1:
-        middle = rf"(?:\w+{SEPARATOR}){{0,{tail_index - 1}}}"
+        mid = stems[1:tail_index]
+        fwd_middle = "".join(rf"(?:{_word_pattern(s)}{SEPARATOR})?" for s in mid)
+        rev_middle = "".join(rf"(?:{_word_pattern(s)}{SEPARATOR})?" for s in reversed(mid))
     patterns.extend([
-        rf"\b{first}{SEPARATOR}{middle}{OPTIONAL_CONNECTOR}{last}\b",
-        rf"\b{last}{SEPARATOR}{OPTIONAL_CONNECTOR}{middle}{first}\b",
+        rf"\b{first}{SEPARATOR}{fwd_middle}{last}\b",
+        rf"\b{last}{SEPARATOR}{rev_middle}{first}\b",
     ])
     return patterns
 
