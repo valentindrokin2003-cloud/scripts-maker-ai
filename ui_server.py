@@ -386,6 +386,11 @@ def _job_payload(job_id: str) -> dict[str, Any] | None:
 
 
 def _job_summary(job: dict[str, Any]) -> dict[str, Any]:
+    steps = job["steps"]
+    current_step = 0
+    for i, s in enumerate(steps):
+        if s["status"] in ("active", "done"):
+            current_step = i + 1
     return {
         "job_id": job["job_id"],
         "status": job["status"],
@@ -393,6 +398,8 @@ def _job_summary(job: dict[str, Any]) -> dict[str, Any]:
         "progress": job["progress"],
         "message": job["message"],
         "queue_position": job["queue_position"],
+        "current_step": current_step,
+        "steps": [dict(s) for s in steps],
         "download_url": f"/api/jobs/{job['job_id']}/download" if job.get("output_path") else None,
         "error": job["error"],
         "cancellable": job["status"] in ("queued", "running"),
