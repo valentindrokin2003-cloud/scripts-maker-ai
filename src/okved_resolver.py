@@ -3,7 +3,7 @@ import os
 import re
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 
 import openpyxl
 
@@ -34,6 +34,7 @@ TARGET_LABEL_KEYWORDS = (
     "целевая группа",
     "тип клиент",
     "вид деятельност",
+    "вид бизнес",
 )
 
 NEGATIVE_CONTEXT_TERMS = {
@@ -286,11 +287,16 @@ def _has_stop_signal(excel_text: str) -> bool:
 
 
 def _collect_target_context(excel_text: str) -> str:
-    contexts = [
-        value
-        for label, value in _iter_labeled_rows(excel_text)
-        if _is_target_label(label)
-    ]
+    contexts = []
+    for label, value in _iter_labeled_rows(excel_text):
+        if not _is_target_label(label):
+            continue
+        # Brief rows are "Label | Value | Template comment ...".
+        # Take only the first segment — the actual field value — to avoid
+        # embedding noise from the boilerplate comment columns.
+        first = value.split("|")[0].strip()
+        if first:
+            contexts.append(first)
     if contexts:
         return "\n".join(contexts)
     return excel_text
@@ -339,7 +345,8 @@ def _has_manual_hint(value: str) -> bool:
     )
 
 
-def _codes_from_semantic_search(context: str, reference: dict[str, OkvedEntry]) -> list[str]:
+def _codes_from_token_overlap(context: str, reference: dict[str, OkvedEntry]) -> list[str]:
+    """Legacy token-overlap retrieval. Used as fallback when embeddings unavailable."""
     normalized = _normalize_text(context)
     context_tokens = _meaningful_tokens(context)
     if not context_tokens:
@@ -367,6 +374,35 @@ def _codes_from_semantic_search(context: str, reference: dict[str, OkvedEntry]) 
     return result
 
 
+@lru_cache(maxsize=1)
+def _get_embedding_index() -> Optional[tuple]:
+    """Load the pre-computed embedding index once per process."""
+    try:
+        from src.okved_embeddings import load_index
+        return load_index()
+    except Exception as exc:
+        logger.debug("[okved] Embedding index unavailable: %s", exc)
+        return None
+
+
+def _codes_from_embeddings(context: str, top_k: int = 20) -> list[str]:
+    """Semantic search using pre-computed sentence-transformer embeddings.
+
+    Returns an empty list when the index hasn't been built or sentence-transformers
+    is not installed — the caller falls back to token overlap in that case.
+    """
+    index = _get_embedding_index()
+    if index is None:
+        return []
+    embeddings, codes = index
+    try:
+        from src.okved_embeddings import search_similar
+        return search_similar(context, embeddings, codes, top_k=top_k)
+    except Exception as exc:
+        logger.warning("[okved] Embedding search failed: %s", exc)
+        return []
+
+
 def _filter_valid_codes(codes: list[str], reference: dict[str, OkvedEntry]) -> list[str]:
     return [code for code in codes if code in reference]
 
@@ -392,6 +428,8 @@ def _build_candidate_resolution(
     explanations: dict[str, list[str]] = {}
 
     normalized_context = _normalize_text(context)
+
+    # 1. Manual keyword hints (highest confidence, always included).
     manual_codes: list[str] = []
     for phrase, codes in MANUAL_CODE_HINTS.items():
         pattern = rf"(?<![a-zа-я0-9]){re.escape(phrase)}(?![a-zа-я0-9])"
@@ -407,32 +445,50 @@ def _build_candidate_resolution(
                     f"Семантический сигнал из брифа: '{phrase}'",
                 )
 
-    context_tokens = _meaningful_tokens(context)
-    for entry in reference.values():
-        if len(entry.code) < 4:
-            continue
-        overlap = sorted(context_tokens & entry.tokens)
-        score = 0
-        if entry.normalized_title in normalized_context:
-            score += 10
+    # 2. Semantic embedding search (primary retrieval when index is available).
+    embedding_codes = _codes_from_embeddings(context, top_k=20)
+    using_embeddings = bool(embedding_codes)
+    for code in embedding_codes:
+        if code in reference and code not in manual_codes:
             _append_explanation(
                 explanations,
-                entry.code,
-                f"Точное совпадение с формулировкой ОКВЭД: {entry.title}",
+                code,
+                f"Семантический поиск (эмбеддинг): {reference[code].title}",
             )
-        if overlap:
-            score += len(overlap) * 2
-            _append_explanation(
-                explanations,
-                entry.code,
-                f"Совпадение по смысловым токенам: {', '.join(overlap)}",
-            )
-        if score < 4 and entry.code not in manual_codes:
-            explanations.pop(entry.code, None)
 
-    candidate_codes = _dedupe_codes(manual_codes + list(explanations))
-    limited_codes = candidate_codes[:12]
-    return limited_codes, {code: explanations[code] for code in limited_codes}
+    # 3. Token-overlap fallback — used when embeddings are not available,
+    #    or as a secondary signal to enrich explanation text.
+    if not using_embeddings:
+        logger.info("[okved] Embedding index not found — falling back to token overlap")
+        context_tokens = _meaningful_tokens(context)
+        for entry in reference.values():
+            if len(entry.code) < 4:
+                continue
+            overlap = sorted(context_tokens & entry.tokens)
+            score = 0
+            if entry.normalized_title in normalized_context:
+                score += 10
+                _append_explanation(
+                    explanations,
+                    entry.code,
+                    f"Точное совпадение с формулировкой ОКВЭД: {entry.title}",
+                )
+            if overlap:
+                score += len(overlap) * 2
+                _append_explanation(
+                    explanations,
+                    entry.code,
+                    f"Совпадение по токенам: {', '.join(overlap)}",
+                )
+            if score < 4 and entry.code not in manual_codes:
+                explanations.pop(entry.code, None)
+
+    # Combine: manual first, then semantic, deduplicated.
+    all_codes = _dedupe_codes(manual_codes + embedding_codes + list(explanations))
+    # Use a larger cap when embeddings provide richer candidates for the LLM reranker.
+    cap = 20 if using_embeddings else 12
+    limited_codes = all_codes[:cap]
+    return limited_codes, {code: explanations.get(code, []) for code in limited_codes}
 
 
 def _llm_rerank_candidates(
@@ -528,7 +584,13 @@ def resolve_okved_resolution(
             decision_reason="explicit_codes_without_reference",
         )
 
-    explicit_codes = _filter_valid_codes(_extract_explicit_codes(excel_text, llm_okved_list), reference)
+    # Only treat fine-grained codes (XX.XX and deeper) as explicit — broad class
+    # codes (XX or single letter) are noise from INN digits / LLM guesses and
+    # must go through semantic search instead.
+    explicit_codes = [
+        c for c in _filter_valid_codes(_extract_explicit_codes(excel_text, llm_okved_list), reference)
+        if not is_okved_code_too_broad(c)
+    ]
     if explicit_codes:
         return OkvedResolution(
             codes=explicit_codes,
@@ -541,6 +603,13 @@ def resolve_okved_resolution(
         return OkvedResolution(codes=[], explanations={}, decision_reason="no_filter_signal")
 
     context = _collect_target_context(excel_text)
+
+    # "Любой" / "Любые" / "Все" in the business-type field means no industry filter.
+    _ANY_INDUSTRY_RE = re.compile(r"^люб\w*$|^все$|^всех$|^без\s+ограничени\w*$", re.IGNORECASE)
+    if _ANY_INDUSTRY_RE.match(_normalize_text(context).strip()):
+        logger.info("[resolve_okved_list] Context is 'any industry' indicator — no filter")
+        return OkvedResolution(codes=[], explanations={}, decision_reason="no_filter_signal")
+
     candidate_codes, candidate_explanations = _build_candidate_resolution(context, reference)
     if not candidate_codes:
         return OkvedResolution(codes=[], explanations={}, decision_reason="no_candidates")
